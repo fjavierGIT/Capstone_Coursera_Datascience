@@ -1,0 +1,281 @@
+---
+title: 'Capstone: Exploratory Analysis'
+author: "Javier Angoy"
+date: "Jan 8th, 2018"
+output:
+  pdf_document: default
+  html_document: default
+header-includes: \usepackage[labelformat=empty]{caption}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	cache = TRUE)
+```
+
+```{r, message=F, warning=F, include=FALSE}
+library("parallel")
+library("quanteda")
+library("kableExtra")
+```
+
+## INTRODUCTION
+Around the world, people are spending an increasing amount of time on their mobile devices for email, social networking, banking and a whole range of other activities. But typing on mobile devices can be a serious pain. A smart keyboard that makes it easier for people to type on their mobile devices. One cornerstone of the smart keyboards are predictive text models.
+In this capstone we will work on understanding and building predictive text models.
+
+To start building a predictive model for text it is very important to understand the distribution and relationship between the words, tokens, and phrases in the text. The goal of this task is to understand the basic relationships in the data and prepare to build the first linguistic models.
+
+The second goal is to build a simple model for the relationship between words. This is the first step in building a predictive text mining application.
+
+This report describes in plain language, plots a preliminary exploratory analysis of the capstone data set.
+
+## THE DATA
+
+```{r getting, message=FALSE, warning=FALSE, include=FALSE}
+# Download zip file and decompress
+if(!file.exists("./Project/Coursera-SwiftKey.zip")){
+        download.file(url = "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip",
+                      destfile= "./Coursera-SwiftKey.zip",
+                      method = "curl")
+    unzip("./Project/Coursera-SwiftKey.zip", overwrite = FALSE, exdir = "./Project")
+    }
+``` 
+
+Text comes in three separated files: blog, news and twitter for each language.
+
+```{r info_table, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ptm <- proc.time()
+
+dirFiles <- paste0(getwd(),'/Project/final/en_US/')
+
+# List all files in directory and extracts information
+readF <- function(dirOpen){
+    co <- 0 #just a counter
+    finfo=data.frame(fname=character(), flen=integer(),
+                     fchars=integer(),fsize=character(),stringsAsFactors = FALSE)
+    listf <- list.files(path = dirOpen, full.names = T)
+    #loop list of files, extract info
+    parallel::mclapply(listf,function(fileOpen) { 
+        co <- 1 + co
+        con <- file(fileOpen, "r", blocking = FALSE)
+        lines <- readLines(con, skipNul = T)
+        finfo[co,1] <- as.character(basename(fileOpen))
+        finfo[co,2] <- length(lines)
+        finfo[co,3] <- sum(nchar(lines))
+        finfo[co,4] <- gdata::humanReadable(file.info(fileOpen)$size)
+        close(con)
+        return(finfo)
+        })
+}
+info_table <- readF(dirFiles)
+info_table <- rbind(info_table[[1]],info_table[[2]],info_table[[3]])
+names(info_table)<- c("File Name","N. Lines","N. Characters","Size")
+knitr::kable(info_table, caption = "Summary of source files")
+proc.time() - ptm
+```
+
+```{r plotlines, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+par(mfrow = c(1, 2))
+barplot(info_table$`N. Lines`, 
+        names.arg = c("Blogs","News","Twitter"),
+        col=c("red","blue","yellow"),
+        xlab = 'File', ylab = 'Total Lines', 
+        main = "Total Line Count per file")
+barplot(info_table$`N. Characters`, 
+        names.arg = c("Blogs","News","Twitter"),
+        col=c("red","blue","yellow"),
+        xlab = 'File', ylab = 'Total Lines', 
+        main = "Total Characters Count per file")
+```
+
+So we see that blogs have the least number of lines while the twitter data have the most. On the other side, blogs have more characters (and blog file size is bigger too).
+
+## THE NEW CORPUS
+Being the original files too bulky for our analysis, due to memory and processing time constrains, we will take a 10% sample from each file and gather the docs into a corpus. As our data analysis will be done through the English text, we choose only the "en_US" files and proceed.
+After that, a summary with the 10 first documents (lines) of the corpus is obtained.
+```{r mycorpus, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+dirFiles <- paste0(getwd(),'/Project/final/')
+copyLines <- function(dirOpen){
+    dir_US <- paste0(dirOpen,'en_US/')
+    fileConn <-paste0(dirOpen,'en_US.txt')
+    listf <- list.files(path = dir_US, full.names = T)
+    if (file.exists(fileConn)){file.remove(fileConn)}
+    #loop list of files, open and copy 25% sample of lines to corpus
+    parallel::mclapply(listf,function(fileOpen) {
+        con <- file(fileOpen, "r", blocking = FALSE)
+        lines <- readLines(con, skipNul = T)
+        lines_copy <- sample(lines, size=length(lines)*0.25, replace=F)
+        text <- tolower(lines_copy) #all text to lower
+        close(con)
+        return(text)
+        })
+}
+set.seed(100)
+mycorpus <- quanteda::corpus(unlist(copyLines(dirFiles)))
+summary(mycorpus,10)
+proc.time() - ptm
+```
+So we have a corpus with `r length(mycorpus$documents$texts)` documents (lines).
+
+### Data cleaning 
+Unlike other NLP methods that avoid some words like offensive words and empty words, our aim is to get the richest possible model. Therefore, we assume that the results will have more accuracy if the model takes into account all kind of vocabulary. 
+To tidy data we will remove numbers (standalone), punctuation marks and other symbols, separators, twitter special chars (@ and #), hyphens and url addresses, as we will focus on  words. Foreign language words or phrases will not be handled in any way. 
+
+```{r tok, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+tok <- tokens(mycorpus, verbose = TRUE,
+       remove_numbers = TRUE, remove_punct = TRUE,
+       remove_symbols = TRUE, remove_separators = TRUE,
+       remove_twitter = TRUE, remove_hyphens = TRUE, 
+       remove_url = TRUE)
+tokens_1 <- tokens(tok, ngrams = 1, concatenator = " ")
+tokens_2 <- tokens(tok, ngrams = 2, concatenator = " ")
+tokens_3 <- tokens(tok, ngrams = 3, concatenator = " ")
+```
+
+```{r dfms, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+unigrams <- dfm(tokens_1, verbose = TRUE)
+duograms <- dfm(tokens_2, verbose = TRUE)
+trigrams <- dfm(tokens_3, verbose = TRUE)
+```
+
+### Basic Statistics to summarize features
+
+We perform a summary of the main characteristics we can 
+```{r summarytable, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+df <- cbind(nfeature(unigrams),nfeature(duograms),nfeature(trigrams))
+colnames(df) <-c("unigrams","bigrams","trigrams")
+knitr::kable(df,style="html", caption = "Feature Statistics")
+#summary
+```
+
+```{r kfeatures, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+ngram1 <- as.matrix(quanteda::topfeatures(unigrams, 25),dimnames=c("1gram","freq"))
+ngram2 <- as.matrix(quanteda::topfeatures(duograms, 25),dimnames=c("2gram","freq"))
+ngram3 <- as.matrix(quanteda::topfeatures(trigrams, 25),dimnames=c("3gram","freq"))
+
+knitr::kable(list(ngram1,ngram2,ngram3), caption = "List of top 25 ngrams (unigrams, duograms and trigrams)", format.args = list(decimal.mark = ".", big.mark = ","), align = "c") %>% kable_styling(full_width = F)
+#, padding = 10
+```
+```{r}
+
+tokens_4 <- tokens(tok, ngrams = 4, concatenator = " ")
+tokens_5 <- tokens(tok, ngrams = 5, concatenator = " ")
+
+tetragrams <- dfm(tokens_4, verbose = TRUE)
+pentagrams <- dfm(tokens_5, verbose = TRUE)
+
+ngram4 <- as.matrix(quanteda::topfeatures(tetragrams, 25),dimnames=c("4gram","freq"))
+ngram5 <- as.matrix(quanteda::topfeatures(pentagrams, 25),dimnames=c("5gram","freq"))
+``` 
+
+## PLOTS
+### Top Features
+Distributions of word frequencies 
+
+```{r top1, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+plot(topfeatures(unigrams, 25), 
+     col = "darkblue", type = "h",
+     xaxt = "n", lwd = 10,
+     xlab = "Top 25 Unigrams",
+     ylab = "Frequency",
+     main = "Unigrams. Histogram of Top Features")
+axis(1, 1:25, labels = names(topfeatures(unigrams, 25))) 
+```
+
+Frequencies of 2-grams and 3-grams in the dataset 
+
+```{r top2, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+par(mfrow = c(1, 2))
+plot(topfeatures(duograms, 25), 
+     col = "darkblue", type = "h",
+     xaxt = "n", lwd = 5,
+     xlab = "Top 25 Duograms",
+     ylab = "Frequency",
+     main = "Bigrams. Top Features")
+axis(1, 1:25, labels = names(topfeatures(duograms, 25))) 
+
+plot(topfeatures(trigrams, 25), 
+     col = "darkblue", type = "h",
+     xaxt = "n", lwd = 5,
+     xlab = "Top 25 Trigrams",
+     ylab = "Frequency",
+     main = "Trigrams. Top Features")
+axis(1, 1:25, labels = names(topfeatures(trigrams, 25))) 
+```
+
+## Coverage 50% - 90%
+Now we estimate the number of unique words that we need in our frequency sorted dictionary to cover 50% of all word instances in the language.
+```{r coverage50, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+no_tokens <- sum(colSums(unigrams)) #total tokens
+features_desc <- sort(colSums(unigrams), decreasing = TRUE) #sort features +-
+
+rel_freq <- features_desc / no_tokens * 100 #calculates relative frequency vector
+acum_rel_freq <- cumsum(rel_freq) #accumulated relative frequency
+fcover_50 <- Position(function(x) x >= 50, acum_rel_freq) #features to cover 50%
+print(fcover_50)
+```
+And for 90%
+```{r coverage90, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+fcover_90 <- Position(function(x) x >= 90, acum_rel_freq) #features to cover 90%
+print(fcover_90)
+```
+So we see that we need `r fcover_50` unique words to get an accuracy of 50%, and that `r fcover_90` will give to us a 90% accuracy.
+
+## CONCLUSIONS
+
+As we see a small number of words represents the bigger part of the corpus. Therefore, we can say that our model will not take much advantage of the most seldom features.  Ignoring those less common features might make our model a bit resource efficient.
+
+## NEXT STEPS
+
+Next we will try to build a predictive model that explores the relationship between words in the more effective way we can.   So we could try to do the same analysis up to bigger n-grams, may be 5.  Memory usage and processing speed will be important tradeoffs however.
+
+## APPENDIX. THE CODE
+
+### Getting the data
+
+```{r, ref.label='getting', echo=TRUE, eval=FALSE}
+```
+
+### Exploring the files
+
+```{r, ref.label="info_table", echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label="plotlines", echo=TRUE, eval=FALSE}
+```
+
+### Exploratory Analysis
+
+```{r, ref.label="mycorpus", echo=TRUE, eval=FALSE}
+```
+
+### Tokenize the texts, create n-grams
+
+```{r, ref.label="tok", echo=TRUE, eval=FALSE}
+```
+
+```{r,ref.label="dfms", echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label="summarytable", echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label="kfeatures", echo=TRUE, eval=FALSE}
+```
+
+### Plots
+```{r, ref.label="tok1", echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label="tok2", echo=TRUE, eval=FALSE}
+```
+
+### Coverage
+```{r, ref.label="coverage50", echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label="coverage90", echo=TRUE, eval=FALSE}
+```
