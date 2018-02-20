@@ -117,6 +117,7 @@ set.seed(100)
 mycorpus <- quanteda::corpus(unlist(copyLines(dirFiles)))
 summary(mycorpus,10)
 proc.time() - ptm
+
 ```
 So we have a corpus with `r length(mycorpus$documents$texts)` documents (lines).
 
