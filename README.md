@@ -1,7 +1,7 @@
 # Capstone Coursera Datascience Program
 Repository for the Coursera Data Science Specialization Program Capstone  
 
-**NOTE FOR GRADERS:**  
+## Project Contents  
 - The Github Repository [is this](https://github.com/fjavierGIT/Capstone_Coursera_Datascience)  
 - The Shiny App for this project [is here](https://fjavierangoy.shinyapps.io/WordPredictoR)  
 - The Pitch Presentation [is here](http://rpubs.com/FJAngoy/wpred_fjag)  
